@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+
+# VS Code
+.vscode/
+
+# macOS
+.DS_Store
+
+# Data/outputs
+*.csv
+*.h5
+*.sqlite
+*.db
+*.log
+*.out
+*.tmp
+
+# Environment
+.env
+.venv/
+venv/
+ENV/
+
+# Plotly temp
+orca*
+
+# Others
+*.bak
+*.swp
+*.swo
+*~
