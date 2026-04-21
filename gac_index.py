@@ -1,3 +1,4 @@
+import time
 import pandas as pd
 import plotly.graph_objects as go
 import yfinance as yf
@@ -29,15 +30,60 @@ def validate_weights(weights: dict[str, float]) -> None:
 
 
 def download_data(tickers: list[str], start: str, end: str) -> pd.DataFrame:
-    data = yf.download(
-        tickers=tickers,
-        start=start,
-        end=end,
-        auto_adjust=False,
-        progress=False,
-    )
+    # yfinance cache can sometimes cause issues on Windows
+    # We will try to download and if it fails with 'database is locked', we rely on retries
+
+    max_retries = 3
+    data = pd.DataFrame()
+    
+    print(f"Start: {start}, End: {end}")
+    
+    for attempt in range(max_retries):
+        try:
+            print(f"Downloading data (attempt {attempt + 1}/{max_retries})...")
+            data = yf.download(
+                tickers=tickers,
+                start=start,
+                end=end,
+                auto_adjust=False,
+                progress=True,
+            )
+            
+            if not data.empty:
+                # Handle MultiIndex check properly
+                if isinstance(data.columns, pd.MultiIndex):
+                    if 'Ticker' in data.columns.names:
+                        downloaded_tickers = data.columns.get_level_values('Ticker').unique()
+                    else:
+                        downloaded_tickers = data.columns.get_level_values(1).unique()
+                else:
+                    downloaded_tickers = [tickers[0]] if not data.empty else []
+
+                missing_tickers = [t for t in tickers if t not in downloaded_tickers]
+                
+                # Check for incomplete data (all NaNs)
+                if not missing_tickers:
+                    for t in tickers:
+                        if 'Close' in data and t in data['Close'] and data['Close'][t].dropna().empty:
+                            missing_tickers.append(t)
+                
+                if not missing_tickers:
+                    print("All tickers downloaded successfully.")
+                    return data
+                else:
+                    print(f"Warning: Missing or incomplete data for {missing_tickers}.")
+            else:
+                print(f"Attempt {attempt + 1}: Received empty DataFrame from yfinance.")
+            
+        except Exception as e:
+            print(f"Download attempt {attempt + 1} failed with exception: {e}")
+            
+        if attempt < max_retries - 1:
+            print("Retrying in 2 seconds...")
+            time.sleep(2)
+
     if data.empty:
-        raise ValueError("No data downloaded. Check tickers, date range, or network.")
+        raise ValueError("No data downloaded. After multiple attempts, the return was empty. Check network or date range.")
     return data
 
 
@@ -85,6 +131,11 @@ def plot_gac_index(index_df: pd.DataFrame) -> None:
     dea = dif.ewm(span=9, adjust=False).mean()
     macd_hist = (dif - dea) * 2
 
+    # 计算 均线
+    ma113 = close.rolling(window=113).mean()
+    ma226 = close.rolling(window=226).mean()
+    ma565 = close.rolling(window=565).mean()
+
     fig = make_subplots(
         rows=3,
         cols=1,
@@ -109,6 +160,20 @@ def plot_gac_index(index_df: pd.DataFrame) -> None:
         ),
         row=1,
         col=1,
+    )
+
+    # 添加均线
+    fig.add_trace(
+        go.Scatter(x=index_df.index, y=ma113, name="MA113", line=dict(color="#00BCD4", width=1)),
+        row=1, col=1
+    )
+    fig.add_trace(
+        go.Scatter(x=index_df.index, y=ma226, name="MA226", line=dict(color="#FFEB3B", width=1.5)),
+        row=1, col=1
+    )
+    fig.add_trace(
+        go.Scatter(x=index_df.index, y=ma565, name="MA565", line=dict(color="#E91E63", width=2)),
+        row=1, col=1
     )
 
     # 成交额
@@ -167,14 +232,37 @@ def plot_gac_index(index_df: pd.DataFrame) -> None:
         col=1,
     )
 
+    # 生成成分股列表文本
+    weights_sorted = sorted(PORTFOLIO_WEIGHTS.items(), key=lambda x: x[1], reverse=True)
+    weights_text = "<b>成分股占比 (Constituents)</b><br>"
+    weights_text += "<br>".join([f"{t}: {w*100:>5.1f}%" for t, w in weights_sorted])
+
     fig.update_layout(
         title="GAC-Index Global AI Compute Index (2023-2026)",
         yaxis_title="指数点位 (基准=100)",
         yaxis2_title="成交金额 (Billion USD)",
         yaxis3_title="MACD",
-        xaxis_rangeslider_visible=False,
+        xaxis_rangeslider_visible=True,  # 启用范围选择器
         template="plotly_dark",
         height=1000,
+        margin=dict(r=180),  # 增加右边距以放置文字
+    )
+
+    # 在右侧添加成分股比例标注
+    fig.add_annotation(
+        xref="paper",
+        yref="paper",
+        x=1.16,
+        y=0.98,
+        text=weights_text,
+        showarrow=False,
+        align="left",
+        font=dict(family="Courier New, monospace", size=11, color="white"),
+        bordercolor="#444",
+        borderwidth=1,
+        borderpad=4,
+        bgcolor="#222",
+        opacity=0.8
     )
 
     fig.show()
