@@ -118,6 +118,7 @@ def build_gac_index(data: pd.DataFrame, weights: dict[str, float]) -> pd.DataFra
         stock_turnover = stock_volume * stock_close
         index_df["Turnover"] += stock_turnover.fillna(0.0)
 
+    index_df = index_df[index_df["Turnover"] > 0]
     index_df = index_df.dropna(subset=["Open", "High", "Low", "Close"])
     return index_df
 
@@ -237,32 +238,59 @@ def plot_gac_index(index_df: pd.DataFrame) -> None:
     weights_text = "<b>成分股占比 (Constituents)</b><br>"
     weights_text += "<br>".join([f"{t}: {w*100:>5.1f}%" for t, w in weights_sorted])
 
-    fig.update_layout(
-        title="GAC-Index Global AI Compute Index (2023-2026)",
-        yaxis_title="指数点位 (基准=100)",
-        yaxis2_title="成交金额 (Billion USD)",
-        yaxis3_title="MACD",
-        xaxis_rangeslider_visible=True,  # 启用范围选择器
-        template="plotly_dark",
-        height=1000,
-        margin=dict(r=180),  # 增加右边距以放置文字
+    # 计算缺失的日期以完全移除间隙 (包括周末和节假日)
+    all_dates = pd.date_range(start=index_df.index.min(), end=index_df.index.max(), freq='D')
+    missing_dates = all_dates.difference(index_df.index)
+    breaks = [d.strftime("%Y-%m-%d") for d in missing_dates]
+
+    fig.update_xaxes(
+        rangebreaks=[
+            dict(values=breaks),  # 隐藏所有不在数据中的日期
+        ]
     )
 
-    # 在右侧添加成分股比例标注
+    # 应用布局设置
+    fig.update_layout(
+        title=dict(
+            text="GAC-Index Global AI Compute Index (2023-2026)",
+            x=0.5,
+            xanchor='center',
+            font=dict(size=24)
+        ),
+        xaxis_rangeslider_visible=True,
+        template="plotly_dark",
+        height=1000,
+        margin=dict(r=200, t=100, b=50, l=80),
+        showlegend=True,
+        legend=dict(
+            yanchor="top",
+            y=0.99,
+            xanchor="left",
+            x=1.01
+        )
+    )
+
+    # 优化各轴设置
+    fig.update_yaxes(title_text="指数点位", row=1, col=1)
+    fig.update_yaxes(title_text="成交金额 (B$)", autorange=True, row=2, col=1)
+    fig.update_yaxes(title_text="MACD", row=3, col=1)
+
+    # 在右下角添加成分股比例标注 (避开图例)
     fig.add_annotation(
         xref="paper",
         yref="paper",
-        x=1.16,
-        y=0.98,
+        x=1.22,
+        y=0.02,
         text=weights_text,
         showarrow=False,
         align="left",
+        valign="bottom",
         font=dict(family="Courier New, monospace", size=11, color="white"),
         bordercolor="#444",
         borderwidth=1,
         borderpad=4,
         bgcolor="#222",
-        opacity=0.8
+        opacity=0.9
     )
 
     fig.show()
