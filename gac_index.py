@@ -77,15 +77,25 @@ def build_gac_index(data: pd.DataFrame, weights: dict[str, float]) -> pd.DataFra
 
 
 def plot_gac_index(index_df: pd.DataFrame) -> None:
+    # 计算 MACD
+    close = index_df["Close"]
+    ema12 = close.ewm(span=12, adjust=False).mean()
+    ema26 = close.ewm(span=26, adjust=False).mean()
+    dif = ema12 - ema26
+    dea = dif.ewm(span=9, adjust=False).mean()
+    macd_hist = (dif - dea) * 2
+
     fig = make_subplots(
-        rows=2,
+        rows=3,
         cols=1,
         shared_xaxes=True,
         vertical_spacing=0.03,
-        row_heights=[0.7, 0.3],
-        specs=[[{"secondary_y": False}], [{"secondary_y": False}]],
+        row_heights=[0.6, 0.25, 0.15],
+        specs=[[{"secondary_y": False}], [{"secondary_y": False}], [{"secondary_y": False}]],
+        subplot_titles=("GAC-Index K线", "成交金额 (十亿美元)", "MACD")
     )
 
+    # 主K线
     fig.add_trace(
         go.Candlestick(
             x=index_df.index,
@@ -101,11 +111,11 @@ def plot_gac_index(index_df: pd.DataFrame) -> None:
         col=1,
     )
 
+    # 成交额
     colors = [
         "green" if c >= o else "red"
         for c, o in zip(index_df["Close"], index_df["Open"])
     ]
-
     fig.add_trace(
         go.Bar(
             x=index_df.index,
@@ -118,13 +128,53 @@ def plot_gac_index(index_df: pd.DataFrame) -> None:
         col=1,
     )
 
+    # MACD
+    macd_bar_colors = ["#26A69A" if v >= 0 else "#EF5350" for v in macd_hist]
+    fig.add_trace(
+        go.Bar(
+            x=index_df.index,
+            y=macd_hist,
+            name="MACD Hist",
+            marker_color=macd_bar_colors,
+            opacity=0.8,
+            showlegend=False
+        ),
+        row=3,
+        col=1,
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=index_df.index,
+            y=dif,
+            mode="lines",
+            name="DIF",
+            line=dict(color="#FFA726", width=1.5),
+            showlegend=False
+        ),
+        row=3,
+        col=1,
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=index_df.index,
+            y=dea,
+            mode="lines",
+            name="DEA",
+            line=dict(color="#29B6F6", width=1.5),
+            showlegend=False
+        ),
+        row=3,
+        col=1,
+    )
+
     fig.update_layout(
         title="GAC-Index Global AI Compute Index (2023-2026)",
-        yaxis_title="Index Level (Base=100)",
-        yaxis2_title="Turnover (Billion USD)",
+        yaxis_title="指数点位 (基准=100)",
+        yaxis2_title="成交金额 (Billion USD)",
+        yaxis3_title="MACD",
         xaxis_rangeslider_visible=False,
         template="plotly_dark",
-        height=850,
+        height=1000,
     )
 
     fig.show()
